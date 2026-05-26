@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MindFlow - 交互式思维导图创作工具</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:'Segoe UI',sans-serif;background:#0f1419;color:#e2e8f0;height:100vh;overflow:hidden;}
+.toolbar{position:fixed;top:0;left:0;right:0;height:48px;background:rgba(15,20,25,.95);border-bottom:1px solid rgba(255,255,255,.06);display:flex;align-items:center;padding:0 14px;z-index:1000;gap:4px;backdrop-filter:blur(10px);}
+.toolbar h1{font-size:15px;color:#06b6d4;margin-right:12px;white-space:nowrap;}
+.tb{padding:6px 12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);border-radius:6px;color:#e2e8f0;cursor:pointer;font-size:11px;transition:.2s;white-space:nowrap;}
+.tb:hover{background:rgba(6,182,212,.12);border-color:#06b6d4;color:#06b6d4;}
+.tb.active{background:rgba(6,182,212,.15);border-color:#06b6d4;color:#06b6d4;}
+.sep{width:1px;height:20px;background:rgba(255,255,255,.08);margin:0 3px;}
+
+.canvas-area{position:fixed;top:48px;left:0;right:0;bottom:0;overflow:hidden;cursor:grab;}
+.canvas-area.dragging{cursor:grabbing;}
+#mindCanvas{position:absolute;top:0;left:0;}
+#nodesLayer{position:absolute;top:0;left:0;width:0;height:0;}
+
+.mind-node{position:absolute;padding:10px 18px;border-radius:10px;cursor:pointer;transition:box-shadow .2s,transform .1s;user-select:none;white-space:nowrap;font-size:14px;font-weight:500;min-width:60px;text-align:center;}
+.mind-node:hover{transform:scale(1.03);}
+.mind-node.selected{box-shadow:0 0 0 3px #06b6d4,0 8px 20px rgba(0,0,0,.3);}
+.mind-node.root{font-size:18px;font-weight:700;padding:14px 24px;border-radius:14px;}
+.mind-node.editing{cursor:text;}
+.mind-node input{background:transparent;border:none;color:inherit;font:inherit;text-align:center;width:100%;outline:none;}
+
+.mini-toolbar{position:absolute;display:none;background:rgba(15,20,25,.95);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:4px;gap:2px;z-index:500;flex-direction:row;}
+.mini-toolbar.show{display:flex;}
+.mt-btn{padding:5px 8px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.06);border-radius:5px;cursor:pointer;font-size:11px;color:#e2e8f0;transition:.2s;}
+.mt-btn:hover{background:rgba(6,182,212,.2);color:#06b6d4;}
+
+.props-panel{position:fixed;top:48px;right:-320px;width:300px;bottom:0;background:rgba(15,20,25,.98);border-left:1px solid rgba(255,255,255,.06);z-index:900;padding:20px;overflow-y:auto;transition:right .3s;}
+.props-panel.show{right:0;}
+.props-panel h3{font-size:13px;color:#06b6d4;margin-bottom:12px;}
+.pp-close{position:absolute;top:14px;right:14px;background:none;border:none;color:rgba(255,255,255,.4);cursor:pointer;font-size:18px;}
+.pp-field{margin-bottom:12px;}
+.pp-field label{display:block;font-size:10px;opacity:.5;margin-bottom:4px;text-transform:uppercase;}
+.pp-field input,.pp-field textarea,.pp-field select{width:100%;padding:8px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:#e2e8f0;font-size:12px;}
+.pp-field textarea{height:60px;resize:vertical;}
+.color-options{display:flex;gap:5px;flex-wrap:wrap;}
+.color-opt{width:24px;height:24px;border-radius:50%;cursor:pointer;border:2px solid transparent;transition:.2s;}
+.color-opt:hover,.color-opt.on{border-color:#fff;transform:scale(1.15);}
+.shape-options{display:flex;gap:5px;}
+.shape-opt{padding:5px 10px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);border-radius:5px;cursor:pointer;font-size:11px;transition:.2s;}
+.shape-opt:hover,.shape-opt.on{border-color:#06b6d4;color:#06b6d4;}
+
+.status-bar{position:fixed;bottom:0;left:0;right:0;height:28px;background:rgba(15,20,25,.95);border-top:1px solid rgba(255,255,255,.06);display:flex;align-items:center;padding:0 14px;font-size:10px;opacity:.4;gap:15px;z-index:1000;}
+</style>
+</head>
+<body>
+<div class="toolbar">
+  <h1>🧩 MindFlow</h1>
+  <button class="tb" onclick="addChild()">+ 子节点 (Tab)</button>
+  <button class="tb" onclick="addSibling()">+ 兄弟 (Enter)</button>
+  <div class="sep"></div>
+  <button class="tb" onclick="autoLayout()">⊞ 自动布局</button>
+  <button class="tb" onclick="expandAll()">⊕ 展开全部</button>
+  <button class="tb" onclick="collapseAll()">⊖ 折叠</button>
+  <div class="sep"></div>
+  <button class="tb" onclick="undo()">↩ 撤销</button>
+  <button class="tb" onclick="redo()">↪ 重做</button>
+  <div class="sep"></div>
+  <button class="tb" onclick="toggleProps()">⚙ 属性</button>
+  <button class="tb" onclick="saveMap()">💾 保存</button>
+  <button class="tb" onclick="exportJSON()">📤 JSON</button>
+  <button class="tb" onclick="exportPNG()">🖼 PNG</button>
+  <button class="tb" onclick="importJSON()">📥 导入</button>
+  <div class="sep"></div>
+  <button class="tb" onclick="loadSample()">🎁 示例</button>
+</div>
+
+<div class="canvas-area" id="canvasArea">
+  <canvas id="mindCanvas"></canvas>
+  <div id="nodesLayer"></div>
+</div>
+
+<div class="mini-toolbar" id="miniToolbar">
+  <div class="mt-btn" onclick="addChild()">+子</div>
+  <div class="mt-btn" onclick="addSibling()">+兄</div>
+  <div class="mt-btn" onclick="deleteNode()">🗑</div>
+  <div class="mt-btn" onclick="toggleCollapse()">±</div>
+</div>
+
+<div class="props-panel" id="propsPanel">
+  <button class="pp-close" onclick="toggleProps()">×</button>
+  <h3>节点属性</h3>
+  <div class="pp-field"><label>文本</label><input id="ppText" oninput="updateNodeText(this.value)"></div>
+  <div class="pp-field"><label>备注</label><textarea id="ppNote" oninput="updateNodeNote(this.value)" placeholder="添加备注..."></textarea></div>
+  <div class="pp-field"><label>颜色</label><div class="color-options" id="ppColors"></div></div>
+  <div class="pp-field"><label>形状</label><div class="shape-options" id="ppShapes"></div></div>
+  <div class="pp-field"><label>优先级</label>
+    <select id="ppPriority" onchange="updateNodeProp('priority',this.value)">
+      <option value="">无</option><option value="high">🔴 高</option><option value="med">🟡 中</option><option value="low">🟢 低</option>
+    </select>
+  </div>
+  <div class="pp-field"><label>图标</label>
+    <select id="ppIcon" onchange="updateNodeProp('icon',this.value)">
+      <option value="">无</option><option value="⭐">⭐</option><option value="💡">💡</option><option value="⚠️">⚠️</option>
+      <option value="✅">✅</option><option value="❌">❌</option><option value="🔥">🔥</option><option value="📌">📌</option>
+      <option value="🎯">🎯</option><option value="💎">💎</option><option value="🚀">🚀</option>
+    </select>
+  </div>
+</div>
+
+<div class="status-bar">
+  <span id="nodeCount">节点: 0</span>
+  <span id="zoomLevel">缩放: 100%</span>
+  <span>快捷键: Tab=子节点 Enter=兄弟 Delete=删除 Space=编辑 Ctrl+Z=撤销</span>
+</div>
+
+<script>
+const COLORS = ['#06b6d4','#8b5cf6','#f59e0b','#ef4444','#22c55e','#ec4899','#3b82f6','#f97316','#14b8a6','#6366f1'];
+const SHAPES = ['rounded','rect','pill','diamond'];
+
+// ====== 数据结构 ======
+let mindmap = { id:'root', text:'中心主题', children:[], color:'#06b6d4', shape:'rounded', x:0, y:0, collapsed:false, note:'', priority:'', icon:'' };
+let selectedId = 'root';
+let viewOffset = {x:0, y:0};
+let zoom = 1;
+let undoStack = [], redoStack = [];
+
+// ====== Canvas & DOM ======
+const area = document.getElementById('canvasArea');
+const canvas = document.getElementById('mindCanvas');
+const ctx = canvas.getContext('2d');
+const nodesLayer = document.getElementById('nodesLayer');
+let isPanning = false, panStart = {x:0,y:0}, offsetStart = {x:0,y:0};
+
+function resize(){
+    const dpr = devicePixelRatio||1;
+    canvas.width = area.offsetWidth*dpr;
+    canvas.height = area.offsetHeight*dpr;
+    canvas.style.width = area.offsetWidth+'px';
+    canvas.style.height = area.offsetHeight+'px';
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    render();
+}
+
+// ====== 树操作 ======
+function findNode(id, node=mindmap){
+    if(node.id===id) return node;
+    for(const c of (node.children||[])){
+        const r = findNode(id, c);
+        if(r) return r;
+    }
+    return null;
+}
+
+function findParent(id, node=mindmap){
+    for(const c of (node.children||[])){
+        if(c.id===id) return node;
+        const r = findParent(id, c);
+        if(r) return r;
+    }
+    return null;
+}
+
+function genId(){ return 'n_'+Date.now()+'_'+Math.random().toString(36).slice(2,5); }
+
+function pushUndo(){
+    undoStack.push(JSON.stringify(mindmap));
+    if(undoStack.length>50) undoStack.shift();
+    redoStack=[];
+}
+
+function undo(){
+    if(!undoStack.length) return;
+    redoStack.push(JSON.stringify(mindmap));
+    mindmap=JSON.parse(undoStack.pop()); autoLayout(); render();
+}
+function redo(){
+    if(!redoStack.length) return;
+    undoStack.push(JSON.stringify(mindmap));
+    mindmap=JSON.parse(redoStack.pop()); autoLayout(); render();
+}
+
+function addChild(){
+    const parent = findNode(selectedId);
+    if(!parent) return;
+    if(parent.collapsed) parent.collapsed=false;
+    pushUndo();
+    const child = { id:genId(), text:'新节点', children:[], color:parent.color, shape:'rounded', x:0,y:0, collapsed:false, note:'', priority:'', icon:'' };
+    parent.children.push(child);
+    selectedId = child.id;
+    autoLayout(); render();
+    startEditing(child.id);
+}
+
+function addSibling(){
+    if(selectedId==='root'){ addChild(); return; }
+    const parent = findParent(selectedId);
+    if(!parent) return;
+    pushUndo();
+    const idx = parent.children.findIndex(c=>c.id===selectedId);
+    const sibling = { id:genId(), text:'新节点', children:[], color:parent.color, shape:'rounded', x:0,y:0, collapsed:false, note:'', priority:'', icon:'' };
+    parent.children.splice(idx+1, 0, sibling);
+    selectedId = sibling.id;
+    autoLayout(); render();
+    startEditing(sibling.id);
+}
+
+function deleteNode(){
+    if(selectedId==='root') return;
+    pushUndo();
+    const parent = findParent(selectedId);
+    if(parent){
+        parent.children = parent.children.filter(c=>c.id!==selectedId);
+        selectedId = parent.id;
+    }
+    autoLayout(); render();
+}
+
+function toggleCollapse(){
+    const node = findNode(selectedId);
+    if(node && node.children.length>0){
+        pushUndo();
+        node.collapsed = !node.collapsed;
+        autoLayout(); render();
+    }
+}
+
+function expandAll(node=mindmap){ node.collapsed=false; node.children.forEach(c=>expandAll(c)); autoLayout(); render(); }
+function collapseAll(node=mindmap){ if(node.children.length) node.collapsed=true; node.children.forEach(c=>collapseAll(c)); autoLayout(); render(); }
+
+// ====== 自动布局 (树形) ======
+function autoLayout(){
+    const GAP_X = 180, GAP_Y = 50;
+    function calcHeight(node){
+        if(node.collapsed || node.children.length===0) return GAP_Y;
+        return node.children.reduce((sum,c)=>sum+calcHeight(c), 0);
+    }
+    function layout(node, x, yStart){
+        node.x = x;
+        if(node.collapsed || node.children.length===0){
+            node.y = yStart + GAP_Y/2;
+            return;
+        }
+        const totalH = calcHeight(node);
+        node.y = yStart + totalH/2;
+        let curY = yStart;
+        node.children.forEach(child=>{
+            const childH = calcHeight(child);
+            layout(child, x+GAP_X, curY);
+            curY += childH;
+        });
+    }
+    const totalH = calcHeight(mindmap);
+    layout(mindmap, 100, -totalH/2);
+    // 初始偏移到视图中心
+    if(viewOffset.x===0 && viewOffset.y===0){
+        viewOffset.x = area.offsetWidth/2 - 100;
+        viewOffset.y = area.offsetHeight/2;
+    }
+}
+
+// ====== 渲染 ======
+function render(){
+    const W = area.offsetWidth, H = area.offsetHeight;
+    ctx.clearRect(0,0,W,H);
+    // 绘制连线
+    drawConnections(mindmap);
+    // 绘制节点DOM
+    renderNodes();
+    updateStatus();
+    updatePropsPanel();
+}
+
+function drawConnections(node){
+    if(node.collapsed) return;
+    node.children.forEach(child=>{
+        const x1 = (node.x + 70)*zoom + viewOffset.x;
+        const y1 = node.y*zoom + viewOffset.y;
+        const x2 = child.x*zoom + viewOffset.x;
+        const y2 = child.y*zoom + viewOffset.y;
+        // 贝塞尔曲线
+        const cpx = (x1+x2)/2;
+        ctx.strokeStyle = child.color||'#06b6d4';
+        ctx.lineWidth = 2*zoom;
+        ctx.globalAlpha = 0.5;
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.bezierCurveTo(cpx, y1, cpx, y2, x2, y2);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+        drawConnections(child);
+    });
+}
+
+function renderNodes(){
+    nodesLayer.innerHTML = '';
+    renderNodeDOM(mindmap, 0);
+}
+
+function renderNodeDOM(node, depth){
+    const sx = node.x*zoom + viewOffset.x;
+    const sy = node.y*zoom + viewOffset.y;
+    const el = document.createElement('div');
+    el.className = 'mind-node' + (depth===0?' root':'') + (node.id===selectedId?' selected':'');
+    el.style.left = sx+'px';
+    el.style.top = sy+'px';
+    el.style.transform = `translate(-50%,-50%) scale(${zoom})`;
+    el.style.background = node.color+'20';
+    el.style.border = `2px solid ${node.color}60`;
+    el.style.color = node.color;
+    if(node.shape==='pill') el.style.borderRadius='30px';
+    else if(node.shape==='rect') el.style.borderRadius='4px';
+    else if(node.shape==='diamond'){ el.style.borderRadius='4px'; el.style.transform+=` rotate(0deg)`; }
+    
+    let content = '';
+    if(node.icon) content += node.icon+' ';
+    content += node.text;
+    if(node.collapsed && node.children.length) content += ` <span style="opacity:.4;font-size:10px;">[${countDescendants(node)}]</span>`;
+    if(node.priority==='high') content += ' 🔴';
+    else if(node.priority==='med') content += ' 🟡';
+    else if(node.priority==='low') content += ' 🟢';
+    el.innerHTML = content;
+    
+    el.addEventListener('click', e=>{ e.stopPropagation(); selectNode(node.id); });
+    el.addEventListener('dblclick', e=>{ e.stopPropagation(); startEditing(node.id); });
+    nodesLayer.appendChild(el);
+    
+    if(!node.collapsed){
+        node.children.forEach(c=>renderNodeDOM(c, depth+1));
+    }
+}
+
+function countDescendants(node){
+    let count = node.children.length;
+    node.children.forEach(c=>count+=countDescendants(c));
+    return count;
+}
+
+function selectNode(id){
+    selectedId = id;
+    render();
+    showMiniToolbar();
+}
+
+function startEditing(id){
+    selectedId = id;
+    render();
+    const node = findNode(id);
+    if(!node) return;
+    const el = nodesLayer.querySelector('.selected');
+    if(!el) return;
+    el.classList.add('editing');
+    el.innerHTML = `<input value="${node.text}" onblur="finishEditing(this.value,'${id}')" onkeydown="if(event.key==='Enter')this.blur();" autofocus>`;
+    el.querySelector('input').focus();
+    el.querySelector('input').select();
+}
+
+function finishEditing(val, id){
+    const node = findNode(id);
+    if(node && val.trim()){ pushUndo(); node.text=val.trim(); }
+    render();
+}
+
+function showMiniToolbar(){
+    const node = findNode(selectedId);
+    if(!node) return;
+    const mt = document.getElementById('miniToolbar');
+    const sx = node.x*zoom + viewOffset.x;
+    const sy = node.y*zoom + viewOffset.y - 40*zoom;
+    mt.style.left = sx+'px';
+    mt.style.top = sy+'px';
+    mt.style.transform = 'translateX(-50%)';
+    mt.classList.add('show');
+}
+
+// ====== 属性面板 ======
+function toggleProps(){ document.getElementById('propsPanel').classList.toggle('show'); }
+
+function updatePropsPanel(){
+    const node = findNode(selectedId);
+    if(!node) return;
+    document.getElementById('ppText').value = node.text;
+    document.getElementById('ppNote').value = node.note||'';
+    document.getElementById('ppPriority').value = node.priority||'';
+    document.getElementById('ppIcon').value = node.icon||'';
+    document.getElementById('ppColors').innerHTML = COLORS.map(c=>`<div class="color-opt ${node.color===c?'on':''}" style="background:${c}" onclick="updateNodeProp('color','${c}')"></div>`).join('');
+    document.getElementById('ppShapes').innerHTML = SHAPES.map(s=>`<div class="shape-opt ${node.shape===s?'on':''}" onclick="updateNodeProp('shape','${s}')">${s}</div>`).join('');
+}
+
+function updateNodeText(val){ const n=findNode(selectedId); if(n){ n.text=val; render(); } }
+function updateNodeNote(val){ const n=findNode(selectedId); if(n) n.note=val; }
+function updateNodeProp(prop, val){
+    const n=findNode(selectedId);
+    if(n){ pushUndo(); n[prop]=val; if(prop==='color'&&n.children) propagateColor(n,val); render(); }
+}
+function propagateColor(node, color){ node.children.forEach(c=>{ c.color=color; propagateColor(c,color); }); }
+
+// ====== 平移 & 缩放 ======
+area.addEventListener('mousedown', e=>{
+    if(e.target.closest('.mind-node')||e.target.closest('.mini-toolbar')) return;
+    isPanning=true; panStart={x:e.clientX,y:e.clientY}; offsetStart={...viewOffset};
+    area.classList.add('dragging');
+    document.getElementById('miniToolbar').classList.remove('show');
+});
+area.addEventListener('mousemove', e=>{
+    if(!isPanning) return;
+    viewOffset.x = offsetStart.x + (e.clientX-panStart.x);
+    viewOffset.y = offsetStart.y + (e.clientY-panStart.y);
+    render();
+});
+window.addEventListener('mouseup', ()=>{ isPanning=false; area.classList.remove('dragging'); });
+area.addEventListener('wheel', e=>{
+    e.preventDefault();
+    const factor = e.deltaY>0 ? 0.9 : 1.1;
+    zoom = Math.max(0.3, Math.min(3, zoom*factor));
+    render();
+}, {passive:false});
+area.addEventListener('click', e=>{
+    if(e.target===area||e.target===canvas){
+        document.getElementById('miniToolbar').classList.remove('show');
+    }
+});
+
+// ====== 快捷键 ======
+document.addEventListener('keydown', e=>{
+    if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA') return;
+    switch(e.key){
+        case 'Tab': e.preventDefault(); addChild(); break;
+        case 'Enter': e.preventDefault(); addSibling(); break;
+        case 'Delete': case 'Backspace': deleteNode(); break;
+        case ' ': e.preventDefault(); startEditing(selectedId); break;
+        case 'z': if(e.ctrlKey||e.metaKey){ e.preventDefault(); undo(); } break;
+        case 'y': if(e.ctrlKey||e.metaKey){ e.preventDefault(); redo(); } break;
+        case 'ArrowUp': navigateSibling(-1); break;
+        case 'ArrowDown': navigateSibling(1); break;
+        case 'ArrowLeft': navigateParent(); break;
+        case 'ArrowRight': navigateChild(); break;
+    }
+});
+
+function navigateSibling(dir){
+    const parent = findParent(selectedId);
+    if(!parent) return;
+    const idx = parent.children.findIndex(c=>c.id===selectedId);
+    const next = parent.children[idx+dir];
+    if(next){ selectedId=next.id; render(); showMiniToolbar(); }
+}
+function navigateParent(){
+    const parent = findParent(selectedId);
+    if(parent){ selectedId=parent.id; render(); showMiniToolbar(); }
+}
+function navigateChild(){
+    const node = findNode(selectedId);
+    if(node&&node.children.length&&!node.collapsed){ selectedId=node.children[0].id; render(); showMiniToolbar(); }
+}
+
+// ====== 保存/导出 ======
+function saveMap(){ localStorage.setItem('mindflow_data', JSON.stringify({mindmap,viewOffset,zoom})); alert('已保存！'); }
+function exportJSON(){
+    const blob=new Blob([JSON.stringify(mindmap,null,2)],{type:'application/json'});
+    const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='mindflow_export.json'; a.click();
+}
+function importJSON(){
+    const inp=document.createElement('input'); inp.type='file'; inp.accept='.json';
+    inp.onchange=e=>{
+        const r=new FileReader();
+        r.onload=ev=>{
+            try{ mindmap=JSON.parse(ev.target.result); selectedId='root'; autoLayout(); render(); alert('导入成功！'); }
+            catch(err){ alert('导入失败'); }
+        };
+        r.readAsText(e.target.files[0]);
+    };
+    inp.click();
+}
+function exportPNG(){
+    // 简化版：截取canvas区域
+    const dataUrl = canvas.toDataURL('image/png');
+    const a=document.createElement('a'); a.href=dataUrl; a.download='mindflow.png'; a.click();
+}
+
+function updateStatus(){
+    let count=0;
+    function cnt(n){ count++; n.children.forEach(c=>cnt(c)); }
+    cnt(mindmap);
+    document.getElementById('nodeCount').textContent = '节点: '+count;
+    document.getElementById('zoomLevel').textContent = '缩放: '+Math.round(zoom*100)+'%';
+}
+
+// ====== 示例数据 ======
+function loadSample(){
+    pushUndo();
+    mindmap = {
+        id:'root', text:'机器学习', color:'#06b6d4', shape:'rounded', x:0, y:0, collapsed:false, note:'', priority:'', icon:'🧠',
+        children:[
+            { id:'n1', text:'监督学习', color:'#8b5cf6', shape:'rounded', x:0,y:0, collapsed:false, note:'', priority:'', icon:'📊',
+              children:[
+                {id:'n1a',text:'线性回归',color:'#8b5cf6',shape:'pill',x:0,y:0,collapsed:false,note:'最小二乘法',priority:'',icon:'',children:[]},
+                {id:'n1b',text:'决策树',color:'#8b5cf6',shape:'pill',x:0,y:0,collapsed:false,note:'信息增益/基尼系数',priority:'',icon:'',children:[]},
+                {id:'n1c',text:'SVM',color:'#8b5cf6',shape:'pill',x:0,y:0,collapsed:false,note:'支持向量机',priority:'med',icon:'',children:[]},
+                {id:'n1d',text:'神经网络',color:'#8b5cf6',shape:'pill',x:0,y:0,collapsed:false,note:'',priority:'high',icon:'🔥',children:[
+                    {id:'n1d1',text:'CNN',color:'#8b5cf6',shape:'rounded',x:0,y:0,collapsed:false,note:'卷积神经网络',priority:'',icon:'',children:[]},
+                    {id:'n1d2',text:'RNN',color:'#8b5cf6',shape:'rounded',x:0,y:0,collapsed:false,note:'循环神经网络',priority:'',icon:'',children:[]},
+                    {id:'n1d3',text:'Transformer',color:'#8b5cf6',shape:'rounded',x:0,y:0,collapsed:false,note:'注意力机制',priority:'high',icon:'⭐',children:[]},
+                ]}
+              ]
+            },
+            { id:'n2', text:'无监督学习', color:'#22c55e', shape:'rounded', x:0,y:0, collapsed:false, note:'', priority:'', icon:'🔍',
+              children:[
+                {id:'n2a',text:'K-Means',color:'#22c55e',shape:'pill',x:0,y:0,collapsed:false,note:'聚类算法',priority:'',icon:'',children:[]},
+                {id:'n2b',text:'PCA',color:'#22c55e',shape:'pill',x:0,y:0,collapsed:false,note:'主成分分析/降维',priority:'',icon:'',children:[]},
+                {id:'n2c',text:'自编码器',color:'#22c55e',shape:'pill',x:0,y:0,collapsed:false,note:'',priority:'',icon:'',children:[]}
+              ]
+            },
+            { id:'n3', text:'强化学习', color:'#f59e0b', shape:'rounded', x:0,y:0, collapsed:false, note:'', priority:'', icon:'🎮',
+              children:[
+                {id:'n3a',text:'Q-Learning',color:'#f59e0b',shape:'pill',x:0,y:0,collapsed:false,note:'',priority:'',icon:'',children:[]},
+                {id:'n3b',text:'Policy Gradient',color:'#f59e0b',shape:'pill',x:0,y:0,collapsed:false,note:'策略梯度',priority:'',icon:'',children:[]},
+                {id:'n3c',text:'PPO/DPO',color:'#f59e0b',shape:'pill',x:0,y:0,collapsed:false,note:'RLHF 关键算法',priority:'high',icon:'🚀',children:[]}
+              ]
+            },
+            { id:'n4', text:'工具与框架', color:'#ef4444', shape:'rounded', x:0,y:0, collapsed:false, note:'', priority:'', icon:'🛠️',
+              children:[
+                {id:'n4a',text:'PyTorch',color:'#ef4444',shape:'pill',x:0,y:0,collapsed:false,note:'',priority:'',icon:'',children:[]},
+                {id:'n4b',text:'TensorFlow',color:'#ef4444',shape:'pill',x:0,y:0,collapsed:false,note:'',priority:'',icon:'',children:[]},
+                {id:'n4c',text:'Scikit-learn',color:'#ef4444',shape:'pill',x:0,y:0,collapsed:false,note:'',priority:'',icon:'',children:[]}
+              ]
+            }
+        ]
+    };
+    selectedId='root';
+    viewOffset={x:0,y:0};
+    autoLayout();
+    viewOffset.x = area.offsetWidth/2 - mindmap.x;
+    viewOffset.y = area.offsetHeight/2;
+    render();
+}
+
+// ====== 初始化 ======
+window.addEventListener('resize', resize);
+resize();
+
+const saved = localStorage.getItem('mindflow_data');
+if(saved){
+    try{
+        const d=JSON.parse(saved);
+        mindmap=d.mindmap; viewOffset=d.viewOffset||{x:0,y:0}; zoom=d.zoom||1;
+        autoLayout(); render();
+    } catch(e){ autoLayout(); render(); }
+} else {
+    autoLayout(); render();
+}
+</script>
+</body>
+</html>
